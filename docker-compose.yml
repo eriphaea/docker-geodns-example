@@ -1,0 +1,89 @@
+version: "3"
+services:
+  mysql:
+    image: mariadb:latest
+    restart: unless-stopped
+    environment:
+      MYSQL_USER: ${MYSQL_USER:-pdns}
+      MYSQL_PASSWORD: "XCfns&q!fQZjjS2am!2P@kmh9tZ@Ag7Pi@VyXQOJI1p@uZD4dY"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-pdns}
+      MYSQL_ALLOW_EMPTY_PASSWORD: ${MYSQL_ALLOW_EMPTY_PASSWORD:-yes}
+    command: --max-allowed-packet=1G
+    ports:
+      - "3306"
+    volumes:
+      - ./mariadb/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      shared:
+        aliases:
+            - mysql
+  pdns_remote:
+    build: pdns_remote
+    restart: unless-stopped
+    environment:
+      PDNS_remote_connection_string: http:url=http://pdns_backend:3000/dns
+      PDNS_allow_axfr_ips: ${PDNS_AXFR_IPS}
+      PDNS_only_notify: ${PDNS_only_notify}
+    ports:
+      - "53:53"
+      - "53:53/udp"
+    networks:
+      - shared
+    depends_on:
+      - pdns_backend
+  pdns_mysql:
+    image: pschiffe/pdns-mysql:latest
+    restart: unless-stopped
+    environment:
+      PDNS_webserver-allow-from: 127.0.0.1,10.0.0.0/8,172.0.0.0/8,192.0.0.0/24
+      PDNS_webserver_address: 0.0.0.0
+      PDNS_webserver: "yes"
+      PDNS_master: "yes"
+      PDNS_api: "yes"
+      PDNS_api_key: ${PDNS_API_KEY:-SecretKey}
+      PDNS_gmysql_host: mysql
+      PDNS_gmysql_user: ${MYSQL_USER:-pdns}
+      PDNS_gmysql_password: XCfns&q!fQZjjS2am!2P@kmh9tZ@Ag7Pi@VyXQOJI1p@uZD4dY
+      PDNS_gmysql_dbname: ${MYSQL_DATABASE:-pdns}
+    ports:
+      - "8081:8081"
+    networks:
+      shared:
+        aliases:
+          - pdns_mysql
+    depends_on:
+      - mysql
+  pdns_backend:
+    container_name: pdns_backend
+    build: backend
+    restart: unless-stopped
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_USER: ${MYSQL_USER:-pdns}
+      MYSQL_PASS: XCfns&q!fQZjjS2am!2P@kmh9tZ@Ag7Pi@VyXQOJI1p@uZD4dY
+      MYSQL_NAME: ${MYSQL_DATABASE:-pdns}
+    ports:
+      - 3000:3000
+    networks:
+      shared:
+        aliases:
+          - pdns_backend
+    depends_on:
+      - mysql
+  pdns_admin:
+    container_name: pdns_admin
+    image: ngoduykhanh/powerdns-admin:0.3
+    restart: unless-stopped
+    environment:
+      SQLALCHEMY_DATABASE_URI: "mysql://pdns:XCfns&q!fQZjjS2am!2P@kmh9tZ@Ag7Pi@VyXQOJI1p@uZD4dY@mysql/pdns"
+      SECRET_KEY: ${PDNS_ADMIN_SECRET:-default}
+    ports:
+      - "9191:80"
+    networks:
+      - shared
+    depends_on:
+      - mysql
+      - pdns_mysql
+
+networks:
+  shared:
